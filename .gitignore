@@ -1,0 +1,53 @@
+# Build directories
+build/
+cmake-build-*/
+
+# Compiled binaries
+slam
+*.exe
+*.out
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Output files
+*.ply
+cloud.ply
+final_slam_cloud.ply
+improved_cloud.ply
+
+# Python virtual environment
+pyenv/
+venv/
+.env
+
+# CMake cache
+CMakeCache.txt
+CMakeLists.txt.user
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Object files
+*.o
+*.obj
+
+# Libraries
+*.a
+*.lib
+*.so
+*.dylib
+
+# Logs
+*.log
+
+# Point clouds
+*.ply
