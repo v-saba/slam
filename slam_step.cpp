@@ -7,6 +7,8 @@
 #include <opencv2/features2d.hpp>
 #include <opencv2/calib3d.hpp>
 #include <opencv2/imgproc.hpp>
+#include <nlohmann/json.hpp>
+#include <fstream>
 
 namespace slam {
 
@@ -30,6 +32,13 @@ FrameCorrespondenceBuilder::FrameCorrespondenceBuilder(float fx, float fy, float
     _impl->cy = cy;
 }
 
+FrameCorrespondenceBuilder::FrameCorrespondenceBuilder(const std::string& calibration_file): _impl(std::make_unique<Impl>()) {
+    if (!loadCalibration(calibration_file)) {
+        std::cerr << "Warning: Failed to load calibration from " << calibration_file
+                  << ", using default values" << std::endl;
+    }
+}
+
 FrameCorrespondenceBuilder::FrameCorrespondenceBuilder(FrameCorrespondenceBuilder&& other) noexcept: _impl(std::move(other._impl)) {}
 
 FrameCorrespondenceBuilder& FrameCorrespondenceBuilder::operator=(FrameCorrespondenceBuilder&& other) noexcept {
@@ -40,6 +49,66 @@ FrameCorrespondenceBuilder& FrameCorrespondenceBuilder::operator=(FrameCorrespon
 }
 
 FrameCorrespondenceBuilder::~FrameCorrespondenceBuilder() = default;
+
+// Load calibration data from JSON file
+bool FrameCorrespondenceBuilder::loadCalibration(const std::string& calibration_file) {
+    std::ifstream file(calibration_file);
+    if (!file.is_open()) {
+        std::cerr << "Error: Could not open calibration file: " << calibration_file << std::endl;
+        return false;
+    }
+
+    try {
+        nlohmann::json calibration_data;
+        file >> calibration_data;
+        file.close();
+
+        // Extract camera matrix values
+        if (calibration_data.contains("camera_matrix")) {
+            auto& camera_matrix = calibration_data["camera_matrix"];
+
+            if (camera_matrix.contains("fx")) {
+                _impl->fx = camera_matrix["fx"].get<float>();
+            } else {
+                std::cerr << "Warning: fx not found in calibration file" << std::endl;
+            }
+
+            if (camera_matrix.contains("fy")) {
+                _impl->fy = camera_matrix["fy"].get<float>();
+            } else {
+                std::cerr << "Warning: fy not found in calibration file" << std::endl;
+            }
+
+            if (camera_matrix.contains("cx")) {
+                _impl->cx = camera_matrix["cx"].get<float>();
+            } else {
+                std::cerr << "Warning: cx not found in calibration file" << std::endl;
+            }
+
+            if (camera_matrix.contains("cy")) {
+                _impl->cy = camera_matrix["cy"].get<float>();
+            } else {
+                std::cerr << "Warning: cy not found in calibration file" << std::endl;
+            }
+        } else {
+            std::cerr << "Warning: camera_matrix section not found in calibration file" << std::endl;
+        }
+
+        std::cout << "Loaded calibration: fx=" << _impl->fx << ", fy=" << _impl->fy
+                  << ", cx=" << _impl->cx << ", cy=" << _impl->cy << std::endl;
+
+        // Optional: load distortion coefficients (not used in current SLAM implementation)
+        if (calibration_data.contains("distortion_coefficients")) {
+            auto dist_coeffs = calibration_data["distortion_coefficients"];
+            std::cout << "Note: Distortion coefficients found but not currently used in SLAM" << std::endl;
+        }
+
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Error parsing calibration file: " << e.what() << std::endl;
+        return false;
+    }
+}
 
 PointCloud FrameCorrespondenceBuilder::buildCorrespondence(const cv::Mat &image) const
 {
@@ -79,7 +148,7 @@ PointCloud FrameCorrespondenceBuilder::buildCorrespondence(const cv::Mat &image)
     matcher.knnMatch(desc1, desc2, matches, 2);
     std::vector<cv::DMatch> good_matches;
     for (const auto& knn : matches) {
-        if (knn[0].distance < 0.75f * knn[1].distance)
+        if (knn[0].distance < _config.match_threshold * knn[1].distance)
             good_matches.push_back(knn[0]);
     }
 
@@ -92,7 +161,13 @@ PointCloud FrameCorrespondenceBuilder::buildCorrespondence(const cv::Mat &image)
 
     // Find essential matrix
     cv::Mat mask;
-    cv::Mat E = cv::findEssentialMat(pts1, pts2, K, cv::RANSAC, 0.999, 1.0, mask);
+    int method;
+    if (_config.essential_matrix_estimator == Config::EssentialMatrixEstimator::RANSAC) {
+        method = cv::RANSAC;
+    } else if (_config.essential_matrix_estimator == Config::EssentialMatrixEstimator::LMEDS) {
+        method = cv::LMEDS;
+    }
+    cv::Mat E = cv::findEssentialMat(pts1, pts2, K, method, 0.999, 1.0, mask);
 
     // Filter inlier points using RANSAC mask
     std::vector<cv::Point2f> inlier_pts1, inlier_pts2;
@@ -120,6 +195,7 @@ PointCloud FrameCorrespondenceBuilder::buildCorrespondence(const cv::Mat &image)
     std::vector<cv::Point3f> pointCloud;
     for (int i = 0; i < pts4D.cols; ++i) {
         cv::Mat col = pts4D.col(i);
+        // Convert coordinates from homogeneous to inhomogeneous
         col /= col.at<float>(3);
         pointCloud.emplace_back(col.at<float>(0), col.at<float>(1), col.at<float>(2));
     }

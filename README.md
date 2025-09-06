@@ -31,3 +31,4 @@ make
 1. Implement processing of a frame sequence into a single point cloud or a 3D model
 2. More flexibility of choosing underlying algorithms
 3. Camera intrinsics calibration
+4. Make it run on GPU, of course

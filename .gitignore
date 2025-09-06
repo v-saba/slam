@@ -1,6 +1,7 @@
 # Build directories
 build/
 cmake-build-*/
+data/
 
 # Compiled binaries
 slam
@@ -51,3 +52,5 @@ Makefile
 
 # Point clouds
 *.ply
+
+AGENTS.md

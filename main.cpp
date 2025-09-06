@@ -4,9 +4,6 @@
 
 #include "slam_step.h"
 
-
-
-
 void exportPointCloud(const std::vector<cv::Point3f>& pointCloud, const char* filename)
 {
     // Save as PLY
@@ -21,22 +18,26 @@ void exportPointCloud(const std::vector<cv::Point3f>& pointCloud, const char* fi
     out.close();
 }
 
-
-
 int main(int argc, char* argv[])
 {
-    if (argc != 4) {
-        std::cerr << "Usage: " << argv[0] << " <image1_path> <image2_path> <output_pointcloud_path>" << std::endl;
-        std::cerr << "Example: " << argv[0] << " data/IMG_1956.jpg data/IMG_1957.jpg cloud.ply" << std::endl;
+    if (argc < 4 || argc > 5) {
+        std::cerr << "Usage: " << argv[0] << " <image1_path> <image2_path> <output_pointcloud_path> [calibration_file.json]" << std::endl;
+        std::cerr << "Examples:" << std::endl;
+        std::cerr << "  " << argv[0] << " data/IMG_1956.jpg data/IMG_1957.jpg cloud.ply" << std::endl;
+        std::cerr << "  " << argv[0] << " data/IMG_1956.jpg data/IMG_1957.jpg cloud.ply camera_calibration.json" << std::endl;
         return 1;
     }
 
     const char* img1_path = argv[1];
     const char* img2_path = argv[2];
     const char* output_path = argv[3];
+    const char* calibration_path = (argc == 5) ? argv[4] : nullptr;
 
     std::cout << "Processing images: " << img1_path << " and " << img2_path << std::endl;
     std::cout << "Output will be saved to: " << output_path << std::endl;
+    if (calibration_path) {
+        std::cout << "Using calibration file: " << calibration_path << std::endl;
+    }
 
     // Load images
     cv::Mat img1 = cv::imread(img1_path, cv::IMREAD_GRAYSCALE);
@@ -47,8 +48,10 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    // Use improved SLAM implementation with high-res camera intrinsics
-    slam::FrameCorrespondenceBuilder slamBuilder(8064.0f, 8064.0f, 2016.0f, 1134.0f);
+    // Create SLAM builder with calibration file or default values
+    slam::FrameCorrespondenceBuilder slamBuilder = calibration_path ?
+        slam::FrameCorrespondenceBuilder(calibration_path) :
+        slam::FrameCorrespondenceBuilder(8064.0f, 8064.0f, 2016.0f, 1134.0f);  // iPhone estimates
 
     // Process first frame (initializes)
     slamBuilder.buildCorrespondence(img1);
@@ -58,6 +61,7 @@ int main(int argc, char* argv[])
 
     exportPointCloud(pointCloud, output_path);
 
-    std::cout << "Point cloud reconstruction complete using improved SLAM!" << std::endl;
+    std::cout << "Point cloud reconstruction complete using "
+              << (calibration_path ? "calibrated" : "estimated") << " camera parameters!" << std::endl;
     return 0;
 }
